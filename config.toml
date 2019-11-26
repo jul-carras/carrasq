@@ -1,4 +1,4 @@
-baseurl = "/"
+baseurl = "https://carrasq.netlify.com/"
 title = "Julian Carrasquillo"
 
 theme = "hugo-coder"
