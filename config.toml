@@ -23,7 +23,7 @@ disqusShortname = "yourdiscussshortname"
     avatarurl = "images/profile.jpg"
     footercontent = ""
 
-    dateformat = "January 2, 2006"
+    dateformat = "2006/01/02"
 
     hideCredits = true
     hideCopyright = true
