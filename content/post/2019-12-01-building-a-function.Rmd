@@ -1,15 +1,13 @@
 ---
-title: building-a-function
+title: "Function Building using the Million Song Dataset"
 author: ~
 date: '2019-12-01'
-slug: building-a-function
+slug: post-functions
 categories: []
 tags: []
 ---
 
-## The One Million Song Dataset, A Sample
-
-```{r, message = FALSE, warning = FALSE}
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
 library(tidyverse)
 library(ggmap)
 library(leaflet)
