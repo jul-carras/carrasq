@@ -1,0 +1,276 @@
+---
+title: building-a-function
+author: ~
+date: '2019-12-01'
+slug: building-a-function
+categories: []
+tags: []
+---
+
+## The One Million Song Dataset, A Sample
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(ggmap)
+library(leaflet)
+library(singer)
+data("songs")
+data("locations")
+data("singer_locations")
+```
+
+## Building a Useful Function
+
+There is a lot of rich views we could make from the data, using the `tidyverse` to make nested dataframes based on `year`, `artist_name`, or even `city`. Since we're dealing with a sample of the full 1 million song list, it would be common to slice and dice the data frame a few ways, storing them all in different variables. I want to build a function that takes the dataframe and produces a list of various cuts for analysis. 
+
+To start, I can wrap all of the steps I am doing now into a function.  
+
+```{r}
+make_slices <- function(){
+  slice_lst <- vector(mode = "list", length = 5)
+  slice_lst[[1]] <- singer_locations %>%
+    group_by(artist_name) %>% 
+    nest() 
+  slice_lst[[2]] <- singer_locations %>% 
+    filter(!is.na(city)) %>% 
+    group_by(city) %>% 
+    nest()
+  slice_lst[[3]] <- singer_locations %>% 
+    group_by(year) %>% 
+    nest()
+  
+  slice_lst[[4]] <- singer_locations %>% 
+    mutate(popularity_lvl = cut(artist_familiarity, 5, labels = seq(1, 5, 1))) %>% 
+    group_by(popularity_lvl) %>% 
+    nest()
+  slice_lst[[5]] <- singer_locations %>% 
+    mutate(hotness_lvl = cut(artist_hotttnesss, 5, labels = seq(1, 5, 1))) %>% 
+    group_by(hotness_lvl) %>% 
+    nest()
+  
+  slice_lst
+}
+```
+
+And now let's call it!
+
+```{r}
+make_slices()[[1]]
+```
+
+`make_slices` is definitely useful and powerful, but is pretty specific in its functionality. Let's expand it by generalizing. We can add arguments to allow a user to give their own dataframe. Since we're opening up this ability, we'd need to handle new columns. Let's start with the simpler character / factor level cuts.
+
+```{r}
+make_slices <- function(df, char_features){
+  slice_lst <- vector(mode = "list", length = 5)
+  slice_lst[[1]] <- df %>%
+    filter(!is.na(get(char_features[[1]]))) %>% 
+    group_by(get(char_features[[1]])) %>% 
+    nest() %>% 
+    `colnames<-`(c(char_features[[1]], "data")) 
+  slice_lst[[2]] <- df %>% 
+    filter(!is.na(get(char_features[[2]]))) %>% 
+    group_by(get(char_features[[2]])) %>% 
+    nest() %>% 
+    `colnames<-`(c(char_features[[2]], "data"))  
+  slice_lst[[3]] <- df %>% 
+    filter(!is.na(get(char_features[[3]]))) %>%
+    group_by(get(char_features[[3]])) %>% 
+    nest() %>% 
+    `colnames<-`(c(char_features[[3]], "data"))
+  slice_lst[[4]] <- df %>% 
+    mutate(popularity_lvl = cut(artist_familiarity, 5, labels = seq(1, 5, 1))) %>% 
+    group_by(popularity_lvl) %>% 
+    nest()
+  slice_lst[[5]] <- df %>% 
+    mutate(hotness_lvl = cut(artist_hotttnesss, 5, labels = seq(1, 5, 1))) %>% 
+    group_by(hotness_lvl) %>% 
+    nest()
+  
+  slice_lst
+}
+```
+
+Notice the generalizations of the first three calls. Since `city` needed to be filtered of any `NA` columns, we applied it to *any* column that comes in. The `get` function allows us to pass a string to a function with `tidyverse` pipelines in them, learned from [this post](https://stackoverflow.com/questions/48219732/pass-a-string-as-variable-name-in-dplyrfilter). While using this call, the name of the grouping column was set to the string `get(feature[[i]])`, which is not only ugly, but not helpful. [This post on Stack Overflow](https://stackoverflow.com/questions/28100780/use-with-replacement-functions-like-colnames) shows how we can plug in generic `baseR` functions into `tidyverse` pipelines! Using the technique, I was able to leverage `colnames`.
+
+```{r}
+make_slices(singer_locations, list("artist_name", "city", "year"))[[1]]
+```
+
+Now on to numeric columns. If we have them, we'd want to cut them into bins first, then group on the new variable. 
+
+```{r}
+make_slices <- function(df, char_features, num_features){
+  slice_lst <- vector(mode = "list", length = 5)
+  
+  slice_lst[[1]] <- df %>%
+    filter(!is.na(get(char_features[[1]]))) %>% 
+    group_by(get(char_features[[1]])) %>% 
+    nest() %>% 
+    `colnames<-`(c(char_features[[1]], "data")) 
+  slice_lst[[2]] <- df %>% 
+    filter(!is.na(get(char_features[[2]]))) %>% 
+    group_by(get(char_features[[2]])) %>% 
+    nest() %>% 
+    `colnames<-`(c(char_features[[2]], "data"))  
+  slice_lst[[3]] <- df %>% 
+    filter(!is.na(get(char_features[[3]]))) %>%
+    group_by(get(char_features[[3]])) %>% 
+    nest() %>% 
+    `colnames<-`(c(char_features[[3]], "data"))
+  feature_name <- sym(paste0(num_features[[1]], "_cut"))
+  slice_lst[[4]] <- df %>% 
+    mutate(
+      !!feature_name := cut(get(num_features[[1]]), 5, labels = seq(1, 5, 1))
+      ) %>% 
+    group_by(!!feature_name) %>% 
+    nest()
+  feature_name <- sym(paste0(num_features[[2]], "_cut"))
+  slice_lst[[5]] <- df %>% 
+    mutate(
+      !!feature_name := cut(get(num_features[[2]]), 5, labels = seq(1, 5, 1))) %>% 
+    group_by(!!feature_name) %>% 
+    nest()
+  
+  slice_lst
+}
+```
+
+This [Stack Overflow post](https://stackoverflow.com/questions/26003574/use-dynamic-variable-names-in-dplyr) helped guide me to dynamic var names using `!!`.
+
+```{r}
+make_slices(singer_locations, 
+            list("artist_name", "city", "year"), 
+            list("artist_familiarity", "artist_hotttnesss"))[[4]]
+```
+
+Now I can pass a dynamic set of information to retrieve a presliced group of nested dataframes. However, if we wanted to change the number of columns to nest on, we'd have to alter the function manually. In addition, we are repeating a lot of code for each level. We could extract that repetative nature and have it be its own function that is called within `make_slices`.
+
+```{r}
+nest_column <- function(feature, df, is_numeric = FALSE){
+  if(is_numeric){
+    feature_name <- sym(paste0(feature, "_cut"))
+    df %>% 
+      mutate(
+        !!feature_name := cut(get(feature), 5, labels = seq(1, 5, 1))
+        ) %>% 
+      group_by(!!feature_name) %>% 
+      nest()
+  } else {
+    df %>%
+      filter(!is.na(get(feature))) %>% 
+      group_by(get(feature)) %>% 
+      nest() %>% 
+      `colnames<-`(c(feature, "data"))
+  }
+    
+}
+make_slices <- function(df, char_features, num_features){
+  slice_lst <- vector(mode = "list", length = 5)
+  
+  slice_lst[[1]] <- nest_column(char_features[[1]], df)
+  slice_lst[[2]] <- nest_column(char_features[[2]], df)
+  slice_lst[[3]] <- nest_column(char_features[[3]], df)
+  slice_lst[[4]] <- nest_column(num_features[[1]], df, is_numeric = TRUE)
+  slice_lst[[5]] <- nest_column(num_features[[2]], df, is_numeric = TRUE)
+  
+  slice_lst
+}
+```
+
+```{r}
+make_slices(singer_locations, 
+            list("artist_name", "city", "year"), 
+            list("artist_familiarity", "artist_hotttnesss"))[[5]]
+```
+
+With this more concise code, we can use `map` calls to handle dynamic list amounts. Note that the `nest_column` call was modified to take the `feature` argument first to make it work with the `map` call.
+
+```{r}
+make_slices <- function(df, char_features, num_features){
+  slice_char <- map(char_features, nest_column, df)
+  slice_num <- map(num_features, nest_column, df, is_numeric = TRUE)
+  c(slice_char, slice_num)
+}
+```
+
+```{r}
+make_slices(singer_locations, 
+            list("artist_name", "city", "year"), 
+            list("artist_familiarity", "artist_hotttnesss"))[[5]]
+```
+
+Iterating in this manner can help us get to really robust and useful functions. Let's see how this works with a new dataframe.
+
+```{r}
+data(iris)
+make_slices(iris, list("Species"), list("Sepal.Length", "Sepal.Width"))
+```
+
+Not bad! There is definitely some more improvement we could go after, particularly with respect to error handling. Functions *can* be our friends.
+
+## Exploring Singer Locations
+
+Connecting R to Google is a really fun way to use their strong API platforms. We can leverage their maps, compute power, and SEO information. There was a [recent move](https://developers.google.com/maps/documentation/geocoding/usage-and-billing) to force users to first register with Google Cloud in order to use this service. It is a bit daunting at first because you are asked to provide a credit card number to access, despite the 1 year free trial. They claim this is to filter out robots requesting access. Either way, the free trial is legitimate and even after that, you are asked before any billing could begin. Even if you do get billed, the pricing is very reasonable for small projects. 
+  
+The `ggmap` [README](https://github.com/dkahle/ggmap) has some helpful guidelines on getting set up. After getting the account ready, you must register your R instance using an API key to speak with Google. 
+
+```{r}
+register_google(key = Sys.getenv("GOOGLE_KEY"), 
+                account_type = "standard")
+```
+
+We can then mutate our dataframe to set `longitude` and `latitude` as their own vector column, then applying the `revgeocode()` function on that. The function takes some time due to the number of calls to Google's API. In order to not piss off the overlords, I'm saving my results to a local .csv file and reading that in when knitting my document.
+
+```{r, message = FALSE}
+# singer_revgeo <- singer_locations %>% 
+#   filter(!is.na(longitude)) %>%
+#   mutate(location_vector = map2(longitude, latitude, ~ c(.x, .y)),
+#          revgeocode = map(location_vector, revgeocode, output = "address")) %>% 
+#   unnest()
+# singer_revgeo %>% 
+#   select(-location_vector) %>% 
+#   group_by_all() %>% 
+#   distinct(track_id) %>% 
+#   write_csv("singer_revgo.csv")
+singer_revgeo <- read_csv("singer_revgo.csv")
+```
+
+Let's explore what `revgeocode` returned.
+
+```{r}
+singer_revgeo %>% 
+  select(city, revgeocode) %>% 
+  sample_n(size = 10)
+```
+
+Looking at the first few entries, we've got decent matches! There are some generic entries in the original dataset that make it hard to know for sure.  
+  
+We can use `leaflet` to provide some interactive maps. We can color groups based on various levels, and add pop-ups to aid our user.  
+  
+```{r, message = FALSE}
+singer_revgeo %>%  
+  leaflet()  %>%   
+  addTiles() %>%  
+  addCircles(popup = ~artist_name, group = ~artist_familiarity) 
+```
+
+We can add factor levels to color based on certain criteria. Let's say we want to see the points when artists released tracks before, during, and after the 90s. 
+  
+  
+```{r, message = FALSE, warning = FALSE}
+singer_90s <- singer_revgeo %>% 
+  filter(year > 0) %>% 
+  mutate(time_period = case_when(
+    year < 1990 ~ "Pre 90s",
+    year > 1999 ~ "Post 90s",
+    TRUE ~ "90s"
+  ),
+  year = as.character(year))
+year_palette <- colorFactor(topo.colors(2), singer_90s$time_period)
+singer_90s %>% 
+  leaflet() %>%
+  addTiles() %>% 
+  addCircles(popup = ~year, color = ~year_palette(time_period))
+```
+

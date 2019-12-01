@@ -20,7 +20,7 @@ disqusShortname = "yourdiscussshortname"
     description = "Julian Carrasquillo's personal website"
     keywords = "blog,developer,personal"
     info = "Data Scientist"
-    avatarurl = "images/avatar.jpg"
+    avatarurl = "images/profile.jpg"
     footercontent = ""
 
     dateformat = "January 2, 2006"
